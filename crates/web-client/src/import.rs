@@ -20,22 +20,27 @@ impl WebClient {
     #[js_export(js_name = "importAccountFile")]
     pub async fn import_account_file(&self, account_file: AccountFile) -> Result<String, JsErr> {
         let keystore = self.get_keystore().await?;
-        let mut guard = self.get_mut_inner().await;
-        let client = guard.as_mut().ok_or_else(|| from_str_err("Client not initialized"))?;
         let account_data: NativeAccountFile = account_file.into();
         let account_id = account_data.account().id().to_string();
         let (account, auth_secret_keys) = account_data.into_parts();
 
-        client
-            .add_account(&account.clone(), false)
-            .await
-            .map_err(|err| js_error_with_context(err, "failed to import account"))?;
-
+        // Store keys before tracking the account (same order as new_wallet /
+        // new_faucet). If add_key fails, the account must not stay tracked, or
+        // a retry hits "already being tracked" before the key loop runs (#650).
         for key in &auth_secret_keys {
             keystore
                 .add_key(key, account.id())
                 .await
                 .map_err(|err| from_str_err(&err.to_string()))?;
+        }
+
+        {
+            let mut guard = self.get_mut_inner().await;
+            let client = guard.as_mut().ok_or_else(|| from_str_err("Client not initialized"))?;
+            client
+                .add_account(&account.clone(), false)
+                .await
+                .map_err(|err| js_error_with_context(err, "failed to import account"))?;
         }
 
         Ok(format!("Imported account with ID: {account_id}"))
@@ -54,6 +59,11 @@ impl WebClient {
 
         let native_id = generated_acct.id();
 
+        keystore
+            .add_key(&key_pair, native_id)
+            .await
+            .map_err(|err| from_str_err(&err.to_string()))?;
+
         {
             let mut guard = self.get_mut_inner().await;
             let client = guard.as_mut().ok_or_else(|| from_str_err("Client not initialized"))?;
@@ -62,11 +72,6 @@ impl WebClient {
                 .await
                 .map_err(|err| js_error_with_context(err, "failed to import public account"))?;
         }
-
-        keystore
-            .add_key(&key_pair, native_id)
-            .await
-            .map_err(|err| from_str_err(&err.to_string()))?;
 
         Ok(Account::from(generated_acct))
     }
