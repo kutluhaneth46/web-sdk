@@ -954,6 +954,31 @@ describe("TransactionsResource", () => {
     });
 
     it.each([
+      ["above u32", 4294967301],
+      ["fractional", 1.5],
+      ["negative", -1],
+      ["2^53", 2 ** 53],
+      ["NaN", NaN],
+    ])(
+      "rejects a destinationDomain that is %s before any binding call",
+      async (_label, destinationDomain) => {
+        const { resource, inner } = makeResource();
+        await expect(
+          resource.withdrawUsdcx({
+            account: "0xsender",
+            token: "0xfaucet",
+            amount: 250,
+            destinationDomain,
+            destinationRecipient: RECIPIENT,
+          })
+        ).rejects.toThrow(
+          /destinationDomain must be an integer from 0 to 4294967295/
+        );
+        expect(inner.newXReserveBurnTransactionRequest).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each([
       ["above 2^53 - 1", Number.MAX_SAFE_INTEGER + 2],
       ["fractional", 1.5],
       ["NaN", NaN],

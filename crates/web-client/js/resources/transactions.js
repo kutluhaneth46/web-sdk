@@ -1343,6 +1343,14 @@ export class TransactionsResource {
         "withdrawUsdcx: destinationRecipient must be a 0x-prefixed 32-byte hex string"
       );
     }
+    // The wasm parameter is a u32, which wraps or zeroes anything else.
+    const domain = opts.destinationDomain;
+    if (!Number.isInteger(domain) || domain < 0 || domain > 0xffffffff) {
+      throw new Error(
+        "withdrawUsdcx: destinationDomain must be an integer from 0 to 4294967295"
+      );
+    }
+
     const accountId = resolveAccountRef(opts.account, wasm);
     const faucetId = resolveAccountRef(opts.token, wasm);
     const recipient = Uint8Array.from(
@@ -1354,7 +1362,7 @@ export class TransactionsResource {
       accountId,
       faucetId,
       amount,
-      opts.destinationDomain,
+      domain,
       recipient
     );
     return { accountId, request };
